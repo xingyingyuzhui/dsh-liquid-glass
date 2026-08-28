@@ -9,6 +9,7 @@ import {
   loadClient,
   mockResizeObserver,
   mockTheme,
+  flushMicrotasks,
 } from './helpers/client-runtime.mjs'
 
 function sessionNodes(stats, overrides = {}) {
@@ -118,7 +119,7 @@ function composerCard(stats, opts = {}) {
   return { card, textarea, plus, send, stop, buttons }
 }
 
-test('stable draft does not keep requesting animation frames', () => {
+test('stable draft does not keep requesting animation frames', async () => {
   const timers = createFakeTimers()
   const { card } = composerCard(timers.stats, { stop: false })
   const live = createLiveReact()
@@ -128,6 +129,7 @@ test('stable draft does not keep requesting animation frames', () => {
     nodes: { '[data-composer-card]': card },
   })
   const { entries } = applyPlugin(plugin, mockTheme())
+  await flushMicrotasks()
   const metal = entries.find(item => item.entry.options.id.includes('metal'))
   live.mount(metal.entry.component)
   timers.flushRaf()
@@ -222,8 +224,9 @@ test('identical island sizes do not rebuild maps', () => {
   assert.equal(context.window.__lgIslandLensRuntime.jobsStarted, started)
 })
 
-test('sidebar-only resize rebuilds only the sidebar map', () => {
+test('sidebar-only resize rebuilds only the sidebar map', async () => {
   const { nodes, stats, timers, ResizeObserver, context } = mountMetrics()
+  await flushMicrotasks()
   timers.flushRaf()
   const started = context.window.__lgIslandLensRuntime.jobsStarted
   nodes.sidebar.clientWidth = 200
@@ -238,7 +241,7 @@ test('sidebar-only resize rebuilds only the sidebar map', () => {
   assert.ok(stats.canvasCreates >= 1)
 })
 
-test('metal ring ids, count and geometry match the accepted overlay', () => {
+test('metal ring ids, count and geometry match the accepted overlay', async () => {
   const timers = createFakeTimers()
   const { card, send } = composerCard(timers.stats, { stop: false })
   const live = createLiveReact()
@@ -248,6 +251,7 @@ test('metal ring ids, count and geometry match the accepted overlay', () => {
     nodes: { '[data-composer-card]': card },
   })
   const { entries } = applyPlugin(plugin, mockTheme())
+  await flushMicrotasks()
   const metal = entries.find(item => item.entry.options.id.includes('metal'))
   live.mount(metal.entry.component)
   timers.flushRaf()
@@ -364,7 +368,7 @@ test('outside composer clicks do not measure button geometry', () => {
   assert.ok(timers.stats.layoutReads - reads < 20)
 })
 
-test('outside clicks only keep two route probes and recover after async card swap', () => {
+test('outside clicks only keep two route probes and recover after async card swap', async () => {
   const timers = createFakeTimers()
   const first = composerCard(timers.stats, { stop: false })
   first.card.contains = () => false
@@ -376,6 +380,7 @@ test('outside clicks only keep two route probes and recover after async card swa
     nodes,
   })
   const { entries } = applyPlugin(plugin, mockTheme())
+  await flushMicrotasks()
   live.mount(entries.find(item => item.entry.options.id.includes('metal')).entry.component)
   timers.flushRaf()
   const reads = timers.stats.layoutReads
@@ -398,7 +403,7 @@ test('outside clicks only keep two route probes and recover after async card swa
   assert.equal(rings[0].props.style.left, 298)
 })
 
-test('route probe restores a composer that appears after being removed', () => {
+test('route probe restores a composer that appears after being removed', async () => {
   const timers = createFakeTimers()
   const first = composerCard(timers.stats, { stop: false })
   first.card.contains = () => false
@@ -410,6 +415,7 @@ test('route probe restores a composer that appears after being removed', () => {
     nodes,
   })
   const { entries } = applyPlugin(plugin, mockTheme())
+  await flushMicrotasks()
   live.mount(entries.find(item => item.entry.options.id.includes('metal')).entry.component)
   timers.flushRaf()
   context.document.dispatch('click', { target: {} })

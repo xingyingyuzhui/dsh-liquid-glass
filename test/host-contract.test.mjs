@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { apply, name, inject, createWallpaperHandler, createIceWallpaperHandler, WALLPAPER_ROUTE, WALLPAPER_ROUTE_LEGACY, WALLPAPER_HASH_PREFIX, WALLPAPER_CONTENT_HASH, ICE_WALLPAPER_ROUTE, ICE_WALLPAPER_ROUTE_LEGACY, ICE_WALLPAPER_HASH_PREFIX, ICE_WALLPAPER_CONTENT_HASH, WALLPAPER_ROUTES } from '../host.js'
+import { apply, name, inject, createWallpaperHandler, createIceWallpaperHandler, WALLPAPER_ROUTE, WALLPAPER_ROUTE_LEGACY, WALLPAPER_HASH_PREFIX, WALLPAPER_CONTENT_HASH, ICE_WALLPAPER_ROUTE, ICE_WALLPAPER_ROUTE_LEGACY, ICE_WALLPAPER_HASH_PREFIX, ICE_WALLPAPER_CONTENT_HASH, WALLPAPER_ROUTES, SETTINGS_ROUTE } from '../host.js'
 
 test('host plugin is a named function plugin', () => {
   assert.equal(name, 'dsh-liquid-glass')
@@ -42,7 +42,7 @@ function mount() {
     },
   }
   apply(ctx)
-  assert.deepEqual(paths, WALLPAPER_ROUTES)
+  assert.deepEqual(paths, [...WALLPAPER_ROUTES, SETTINGS_ROUTE])
   assert.match(WALLPAPER_ROUTE, new RegExp(`liquid-glass-deepwater\\.${WALLPAPER_HASH_PREFIX}\\.jpg$`))
   assert.match(ICE_WALLPAPER_ROUTE, new RegExp(`liquid-glass-ice\\.${ICE_WALLPAPER_HASH_PREFIX}\\.jpg$`))
   return {
@@ -211,4 +211,116 @@ test('a failed first read can succeed on retry', async () => {
   assert.equal(head.status, 200)
   assert.equal(head.body, undefined)
   assert.equal(reads, 2)
+})
+
+import { createSettingsHandler, isPlainSettingsMap, resolveSettingsPath, MAX_SETTINGS_BODY_BYTES } from '../host.js'
+
+function mockSettingsIo(initial = '{}') {
+  const writes = []
+  let text = initial
+  return {
+    writes,
+    read: () => Promise.resolve(text),
+    write(next) {
+      writes.push(next)
+      text = next
+      return Promise.resolve()
+    },
+  }
+}
+
+function mockPutRequest(body, chunkSize = 64) {
+  const chunks = []
+  for (let i = 0; i < body.length; i += chunkSize) chunks.push(Buffer.from(body.slice(i, i + chunkSize)))
+  return {
+    method: 'PUT',
+    on(event, fn) {
+      if (event === 'data') this._data = fn
+      if (event === 'end') this._end = fn
+      if (event === 'error') this._error = fn
+    },
+    destroy() { this._destroyed = true },
+    feed() {
+      for (const chunk of chunks) this._data(chunk)
+      this._end()
+    },
+  }
+}
+
+test('settings GET serves the document with no-store', async () => {
+  const io = mockSettingsIo('{"__v":"1","dsh-liquid-glass:effect":"on"}')
+  const handler = createSettingsHandler(io)
+  const res = mockResponse()
+  await handler({ method: 'GET' }, res)
+  assert.equal(res.status, 200)
+  assert.equal(res.headers['cache-control'], 'no-store')
+  assert.equal(JSON.parse(res.body)['dsh-liquid-glass:effect'], 'on')
+})
+
+test('settings PUT validates, persists and reflects in later GETs', async () => {
+  const io = mockSettingsIo()
+  const handler = createSettingsHandler(io)
+  const req = mockPutRequest('{"__v":"1","dsh-liquid-glass.glass.blur":"25"}')
+  const res = mockResponse()
+  const done = handler(req, res)
+  req.feed()
+  await done
+  assert.equal(res.status, 204)
+  assert.equal(io.writes.length, 1)
+  assert.equal(JSON.parse(io.writes[0])['dsh-liquid-glass.glass.blur'], '25')
+  const after = mockResponse()
+  await handler({ method: 'GET' }, after)
+  assert.equal(JSON.parse(after.body)['dsh-liquid-glass.glass.blur'], '25')
+})
+
+test('settings PUT rejects non-flat documents', async () => {
+  const handler = createSettingsHandler(mockSettingsIo())
+  for (const bad of ['[]', '{"a":{"nested":1}}', '{"a":5}', 'not json', '{"":""}']) {
+    const req = mockPutRequest(bad)
+    const res = mockResponse()
+    const done = handler(req, res)
+    req.feed()
+    await done
+    assert.equal(res.status, 400, bad)
+  }
+})
+
+test('settings PUT rejects an over-size body with 413', async () => {
+  const handler = createSettingsHandler(mockSettingsIo())
+  const huge = '{"k":"' + 'A'.repeat(MAX_SETTINGS_BODY_BYTES) + '"}'
+  const req = mockPutRequest(huge, 1024 * 1024)
+  const res = mockResponse()
+  const done = handler(req, res)
+  req.feed()
+  await done
+  assert.equal(res.status, 413)
+  assert.equal(req._destroyed, true)
+})
+
+test('settings route rejects other methods with Allow: GET, HEAD, PUT', async () => {
+  const handler = createSettingsHandler(mockSettingsIo())
+  const res = mockResponse()
+  await handler({ method: 'DELETE' }, res)
+  assert.equal(res.status, 405)
+  assert.equal(res.headers.allow, 'GET, HEAD, PUT')
+})
+
+test('isPlainSettingsMap accepts string maps only', () => {
+  assert.equal(isPlainSettingsMap({ a: 'x', b: null }), true)
+  assert.equal(isPlainSettingsMap({}), true)
+  assert.equal(isPlainSettingsMap(null), false)
+  assert.equal(isPlainSettingsMap([]), false)
+  assert.equal(isPlainSettingsMap({ a: 1 }), false)
+  assert.equal(isPlainSettingsMap({ a: { b: 'c' } }), false)
+})
+
+test('resolveSettingsPath prefers DSH_HOME and falls back to ~/.dsh', () => {
+  assert.equal(
+    resolveSettingsPath({ DSH_HOME: '/opt/dsh' }, '/home/u'),
+    '/opt/dsh/plugins/dsh-liquid-glass/settings.json',
+  )
+  assert.equal(
+    resolveSettingsPath({}, '/home/u'),
+    '/home/u/.dsh/plugins/dsh-liquid-glass/settings.json',
+  )
 })

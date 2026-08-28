@@ -18,6 +18,12 @@
     var DEEPWATER_WALLPAPER_URL = '/dsh-liquid-glass/assets/liquid-glass-deepwater.' + DEEPWATER_WALLPAPER_HASH + '.jpg'
     var BACKGROUND_OPACITY_STORAGE = 'dsh-liquid-glass.background.opacity'
     var GLASS_BLUR_STORAGE = 'dsh-liquid-glass.glass.blur'
+    // Settings live on the host (stable path, survives the per-launch port
+    // change); localStorage is only consulted once as a migration source.
+    var SETTINGS_ENDPOINT = '/dsh-liquid-glass/settings.json'
+    var SETTINGS_DOC_KEY = '__v'
+    var SETTINGS_DOC_VERSION = '1'
+    var SETTINGS_PERSIST_DEBOUNCE_MS = 300
     var DEFAULT_WALLPAPER_OPACITY = 0.88
     var DEFAULT_GLASS_BLUR = 20
     // Sidebar / title A / conversation H share the samasante field.

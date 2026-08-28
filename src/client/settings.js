@@ -32,6 +32,9 @@
       }, [])
 
       var failStatus = function (ok) {
+        // Writes land in the working copy immediately; the debounced host PUT
+        // reports its own failure, so surface it alongside the local verdict.
+        if (storagePersistFailed()) return copy('persistFail')
         return ok ? '' : copy('persistFail')
       }
 

@@ -1,8 +1,16 @@
 {
   "name": "dsh-liquid-glass",
-  "version": "0.12.82",
+  "version": "0.13.0",
   "description": "Wallpaper plus an optional Liquid Glass overlay for DeepSeek Harness. Sits on official light / dark / system. 官方浅色/深色/跟随系统上的壁纸与液态玻璃叠加。",
-  "keywords": ["dsh", "dsh-plugin", "deepseek-harness", "theme", "skin", "liquid-glass", "glassmorphism"],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "theme",
+    "skin",
+    "liquid-glass",
+    "glassmorphism"
+  ],
   "license": "MIT",
   "type": "module",
   "main": "./host.js",
@@ -11,8 +19,21 @@
     "./client": "./client.js",
     "./package.json": "./package.json"
   },
-  "files": ["host.js", "client.js", "src/client", "scripts/build-client.mjs", "scripts/generate-optics-fallbacks.mjs", "scripts/png-codec.mjs", "cordis.patch.yml", "assets", "README.md", "LICENSE"],
-  "engines": { "node": ">=20" },
+  "files": [
+    "host.js",
+    "client.js",
+    "src/client",
+    "scripts/build-client.mjs",
+    "scripts/generate-optics-fallbacks.mjs",
+    "scripts/png-codec.mjs",
+    "cordis.patch.yml",
+    "assets",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "generate:optics": "node scripts/generate-optics-fallbacks.mjs",
     "generate:optics:check": "node scripts/generate-optics-fallbacks.mjs --check",
@@ -22,7 +43,11 @@
     "quality": "npm run build:check && node --check host.js && node --test test/*.test.mjs"
   },
   "dsh": {
-    "bundle": { "patch": "./cordis.patch.yml" },
-    "client": { "platform": "web" }
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
   }
 }

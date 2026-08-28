@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { findBy, loadClient, makeReact, mockTheme } from './helpers/client-runtime.mjs'
+import { createFakeTimers, findBy, flushMicrotasks, loadClient, makeReact, mockTheme } from './helpers/client-runtime.mjs'
 import { loadFixture, select } from './helpers/fixture-dom.mjs'
 
 const clientSource = await readFile(new URL('../client.js', import.meta.url), 'utf8')
@@ -258,7 +258,7 @@ test('Ice wallpaper uses the same static image plate as deepwater', () => {
   assert.doesNotMatch(plate, /transform\s*:/)
 })
 
-test('wallpaper is never globally blurred; glass blur updates CSS variables only', () => {
+test('wallpaper is never globally blurred; glass blur updates CSS variables only', async () => {
   const storage = new Map([
     ['dsh-liquid-glass:effect', 'on'],
     ['dsh-liquid-glass.glass.blur', '28'],
@@ -271,6 +271,7 @@ test('wallpaper is never globally blurred; glass blur updates CSS variables only
     effect(callback) { callback() },
     on() { return () => {} },
   })
+  await flushMicrotasks()
   const wall = context.document.body.children[0]
   assert.equal(wall.style.filter, 'none')
   assert.equal(wall.style.opacity, '0.7')
@@ -461,7 +462,7 @@ test('each glass island owns a local ::before material', () => {
   assert.doesNotMatch(clientSource, /\[data-variant='others'\]/)
 })
 
-test('install keeps official appearance and only washes the canvas for wallpaper', () => {
+test('install keeps official appearance and only washes the canvas for wallpaper', async () => {
   const { context, plugin } = loadClient()
   const theme = mockTheme()
   const effects = []
@@ -470,6 +471,7 @@ test('install keeps official appearance and only washes the canvas for wallpaper
     effect(callback) { effects.push(callback()) },
     on() { return () => {} },
   })
+  await flushMicrotasks()
 
   assert.equal(plugin.name, 'dsh-liquid-glass')
   assert.deepEqual(Array.from(plugin.inject), ['theme', 'slots'])
@@ -491,7 +493,7 @@ test('install keeps official appearance and only washes the canvas for wallpaper
   assert.equal(context.document.body.getAttribute('data-dsh-liquid-glass'), null)
 })
 
-test('enabling glass does not write data-dsh-glass or move DOM', () => {
+test('enabling glass does not write data-dsh-glass or move DOM', async () => {
   const storage = new Map([['dsh-liquid-glass:effect', 'on']])
   const { context, plugin } = loadClient(undefined, storage)
   const theme = mockTheme()
@@ -501,12 +503,13 @@ test('enabling glass does not write data-dsh-glass or move DOM', () => {
     effect(callback) { callback() },
     on() { return () => {} },
   })
+  await flushMicrotasks()
   assert.equal(context.document.body.getAttribute('data-dsh-liquid-glass'), 'light')
   assert.equal(context.document.body.getAttribute('data-dsh-glass'), null)
   assert.equal(context.document.body.children, originalChildren)
 })
 
-test('interleaved apply A / apply B / dispose A keeps B alive', () => {
+test('interleaved apply A / apply B / dispose A keeps B alive', async () => {
   const { context, plugin } = loadClient(makeReact())
   const theme = mockTheme()
   const effects = []
@@ -533,7 +536,9 @@ test('interleaved apply A / apply B / dispose A keeps B alive', () => {
     on() { return () => {} },
   }
   plugin.apply(ctx)
+  await flushMicrotasks()
   plugin.apply(ctx)
+  await flushMicrotasks()
   assert.equal(context.document.head.tags.length, 2)
   assert.equal(context.document.body.children.length, 4)
   assert.equal(theme.overrides.length, 2)
@@ -574,7 +579,7 @@ test('slot inject throw rolls back style and wallpaper', () => {
   assert.equal(theme.overrides.length, 0)
 })
 
-test('theme/change refreshes light, dark and system variables', () => {
+test('theme/change refreshes light, dark and system variables', async () => {
   const storage = new Map([['dsh-liquid-glass:effect', 'on']])
   const { context, plugin } = loadClient(undefined, storage)
   const theme = mockTheme({ colorScheme: 'light' })
@@ -588,6 +593,7 @@ test('theme/change refreshes light, dark and system variables', () => {
       return () => { listener = undefined }
     },
   })
+  await flushMicrotasks()
   assert.equal(context.document.body.getAttribute('data-dsh-liquid-glass'), 'light')
   theme.preference = 'dark'
   theme.colorScheme = 'dark'
@@ -599,7 +605,7 @@ test('theme/change refreshes light, dark and system variables', () => {
   assert.equal(context.document.body.getAttribute('data-dsh-liquid-glass'), 'light')
 })
 
-test('ice locks light appearance and deepwater locks dark appearance', () => {
+test('ice locks light appearance and deepwater locks dark appearance', async () => {
   const darkStorage = new Map([
     ['dsh-liquid-glass:effect', 'on'],
     ['dsh-liquid-glass.background', 'deepwater'],
@@ -611,6 +617,7 @@ test('ice locks light appearance and deepwater locks dark appearance', () => {
     effect(callback) { callback() },
     on() { return () => {} },
   })
+  await flushMicrotasks()
   assert.deepEqual(darkTheme.themeSets, ['dark'])
   assert.equal(darkTheme.preference, 'dark')
   assert.equal(darkRun.context.document.body.getAttribute('data-dsh-liquid-glass'), 'dark')
@@ -633,18 +640,20 @@ test('ice locks light appearance and deepwater locks dark appearance', () => {
     effect(callback) { callback() },
     on() { return () => {} },
   })
+  await flushMicrotasks()
   assert.deepEqual(lightTheme.themeSets, ['light'])
   assert.equal(lightTheme.preference, 'light')
   assert.equal(lightRun.context.document.body.getAttribute('data-dsh-liquid-glass'), 'light')
   assert.equal(lightTheme.overrides[0].tokens['--dsw-alias-label-primary'].light, '#2c3340')
 })
 
-test('switching official appearance swaps ice and deepwater, but leaves none alone', () => {
+test('switching official appearance swaps ice and deepwater, but leaves none alone', async () => {
   const iceStorage = new Map([
     ['dsh-liquid-glass:effect', 'on'],
     ['dsh-liquid-glass.background', 'ice'],
   ])
-  const iceRun = loadClient(undefined, iceStorage)
+  const iceTimers = createFakeTimers()
+  const iceRun = loadClient(undefined, iceStorage, { timers: iceTimers })
   const iceTheme = mockTheme({ preference: 'light', colorScheme: 'light' })
   let iceListener
   iceRun.plugin.apply({
@@ -656,17 +665,22 @@ test('switching official appearance swaps ice and deepwater, but leaves none alo
       return () => {}
     },
   })
+  await flushMicrotasks()
   iceTheme.preference = 'dark'
   iceTheme.colorScheme = 'dark'
   iceListener({ preference: 'dark', active: { colorScheme: 'dark' } })
-  assert.equal(iceStorage.get('dsh-liquid-glass.background'), 'deepwater')
+  iceTimers.runAllTimeouts()
+  await flushMicrotasks()
+  const icePut = JSON.parse(iceRun.fetchLog.filter(entry => entry.method === 'PUT').at(-1).body)
+  assert.equal(icePut['dsh-liquid-glass.background'], 'deepwater')
   assert.equal(iceRun.context.document.body.getAttribute('data-dsh-liquid-glass'), 'dark')
 
   const noneStorage = new Map([
     ['dsh-liquid-glass:effect', 'on'],
     ['dsh-liquid-glass.background', 'none'],
   ])
-  const noneRun = loadClient(undefined, noneStorage)
+  const noneTimers = createFakeTimers()
+  const noneRun = loadClient(undefined, noneStorage, { timers: noneTimers })
   const noneTheme = mockTheme({ preference: 'light', colorScheme: 'light' })
   let noneListener
   noneRun.plugin.apply({
@@ -677,10 +691,14 @@ test('switching official appearance swaps ice and deepwater, but leaves none alo
       return () => {}
     },
   })
+  await flushMicrotasks()
   noneTheme.preference = 'dark'
   noneTheme.colorScheme = 'dark'
   noneListener({ preference: 'dark', active: { colorScheme: 'dark' } })
-  assert.equal(noneStorage.get('dsh-liquid-glass.background'), 'none')
+  noneTimers.runAllTimeouts()
+  await flushMicrotasks()
+  const nonePut = JSON.parse(noneRun.fetchLog.filter(entry => entry.method === 'PUT').at(-1).body)
+  assert.equal(nonePut['dsh-liquid-glass.background'], 'none')
   assert.deepEqual(noneTheme.themeSets, [])
 })
 
@@ -921,7 +939,14 @@ test('imported wallpapers stack in a library and remove sits beside import only 
       { id: 'custom-b', data: 'data:image/jpeg;base64,bbb' },
     ])],
   ])
-  const { plugin } = loadClient(React, storage)
+  const timers = createFakeTimers()
+  const { plugin, fetchLog } = loadClient(React, storage, { timers })
+  const hostDoc = async () => {
+    timers.runAllTimeouts()
+    await flushMicrotasks()
+    const puts = fetchLog.filter(entry => entry.method === 'PUT')
+    return puts.length === 0 ? {} : JSON.parse(puts.at(-1).body)
+  }
   const theme = mockTheme()
   const entries = []
   plugin.apply({
@@ -942,6 +967,7 @@ test('imported wallpapers stack in a library and remove sits beside import only 
     effect(callback) { callback() },
     on() { return () => {} },
   })
+  await flushMicrotasks()
 
   const render = () => {
     React.reset()
@@ -975,23 +1001,24 @@ test('imported wallpapers stack in a library and remove sits beside import only 
   assert.equal(findBy(afterIce, node => node?.props?.['data-liquid-glass-background-choice'] === 'ice').props['aria-pressed'], true)
   assert.equal(findBy(afterIce, node => node?.props?.['data-liquid-glass-background-choice'] === 'custom-a').props['aria-pressed'], false)
   assert.equal(findBy(afterIce, node => node?.props && 'data-liquid-glass-remove' in node.props), null)
-  assert.equal(storage.get('dsh-liquid-glass.background'), 'ice')
-  assert.equal(JSON.parse(storage.get('dsh-liquid-glass.background.customs')).length, 2)
+  assert.equal((await hostDoc())['dsh-liquid-glass.background'], 'ice')
+  assert.equal(JSON.parse((await hostDoc())['dsh-liquid-glass.background.customs']).length, 2)
 
   findBy(afterIce, node => node?.props?.['data-liquid-glass-background-choice'] === 'custom-b').props.onClick()
   const afterCustom = render()
   const remove = findBy(afterCustom, node => node?.props && 'data-liquid-glass-remove' in node.props)
   assert.ok(remove)
   assert.equal(findBy(afterCustom, node => node?.props?.['data-liquid-glass-background-choice'] === 'custom-b').props['aria-pressed'], true)
-  assert.equal(storage.get('dsh-liquid-glass.background'), 'custom-b')
+  assert.equal((await hostDoc())['dsh-liquid-glass.background'], 'custom-b')
 
   remove.props.onClick()
   const afterRemove = render()
   assert.equal(findBy(afterRemove, node => node?.props?.['data-liquid-glass-background-choice'] === 'custom-b'), null)
   assert.equal(findBy(afterRemove, node => node?.props?.['data-liquid-glass-background-choice'] === 'custom-a').props['aria-pressed'], true)
   assert.ok(findBy(afterRemove, node => node?.props && 'data-liquid-glass-remove' in node.props))
-  assert.deepEqual(JSON.parse(storage.get('dsh-liquid-glass.background.customs')).map(item => item.id), ['custom-a'])
-  assert.equal(storage.get('dsh-liquid-glass.background'), 'custom-a')
+  const finalDoc = await hostDoc()
+  assert.deepEqual(JSON.parse(finalDoc['dsh-liquid-glass.background.customs']).map(item => item.id), ['custom-a'])
+  assert.equal(finalDoc['dsh-liquid-glass.background'], 'custom-a')
 
   assert.match(clientSource, /CUSTOM_LIBRARY_STORAGE/)
   assert.match(clientSource, /newCustomBackgroundId/)

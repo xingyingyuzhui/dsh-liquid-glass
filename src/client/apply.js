@@ -6,8 +6,20 @@
       var dispose = runWithRollback([
         function () { return controller.installStyles() },
         function () {
-          controller.applyAtmosphere(theme)
-          return function () { controller.teardownAtmosphere() }
+          // First frame waits for the host settings document; before it
+          // lands, reads fall back to defaults, so applying early would flash
+          // the default wallpaper and get replaced one round-trip later.
+          var live = true
+          var started = hydrateSettings().then(function () {
+            if (!live) return
+            controller.applyAtmosphere(theme)
+            controller.notifySettings()
+          })
+          started.catch(function () {})
+          return function () {
+            live = false
+            controller.teardownAtmosphere()
+          }
         },
         function () {
           if (typeof ctx.on !== 'function') return undefined

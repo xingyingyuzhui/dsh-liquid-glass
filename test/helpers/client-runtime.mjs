@@ -152,6 +152,13 @@ export function createRectNode(rect, stats = null) {
   })
 }
 
+/** Let pending microtask chains (settings hydration, PUT queue) settle. */
+export function flushMicrotasks(rounds = 12) {
+  let chain = Promise.resolve()
+  for (let i = 0; i < rounds; i++) chain = chain.then(() => {})
+  return chain
+}
+
 export function loadClient(requireReact = undefined, storage = new Map(), options = {}) {
   let plugin
   const timers = options.timers || null
@@ -266,6 +273,19 @@ export function loadClient(requireReact = undefined, storage = new Map(), option
       },
     },
   })
+  // Host settings document mock: GET serves the current document (a bare {}
+  // until the host has been written), PUT adopts and stores the body.
+  const fetchLog = []
+  let hostSettingsDoc = options.hostSettings ?? null
+  const fetchImpl = (url, init = {}) => {
+    fetchLog.push({ url, method: init.method || 'GET', body: init.body })
+    if ((init.method || 'GET') === 'GET') {
+      const doc = hostSettingsDoc ?? {}
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(doc) })
+    }
+    hostSettingsDoc = JSON.parse(init.body)
+    return Promise.resolve({ ok: true })
+  }
   const context = {
     Set,
     Map,
@@ -278,6 +298,7 @@ export function loadClient(requireReact = undefined, storage = new Map(), option
     ResizeObserver: options.ResizeObserver,
     setTimeout: timers ? timers.setTimeout : setTimeout,
     clearTimeout: timers ? timers.clearTimeout : clearTimeout,
+    fetch: fetchImpl,
     requestIdleCallback: options.requestIdleCallback,
     cancelIdleCallback: options.cancelIdleCallback,
     Image: options.Image,
@@ -292,7 +313,7 @@ export function loadClient(requireReact = undefined, storage = new Map(), option
     windowApi.cancelAnimationFrame = timers.cancelAnimationFrame
   }
   vm.runInNewContext(clientSource, context, { filename: 'client.js' })
-  return { context, plugin, nodes, stats, timers }
+  return { context, plugin, nodes, stats, timers, fetchLog }
 }
 
 export function mockTheme(initial = {}) {

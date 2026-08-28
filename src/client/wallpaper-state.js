@@ -143,41 +143,7 @@
       return libraryPersistSize(next, incomingData || null) <= MAX_CUSTOM_LIBRARY_DATA_URL_LENGTH + CUSTOM_LIBRARY_STORAGE_RESERVE
     }
 
-    function restoreStorageSnapshot(snapshot) {
-      var keys = [
-        BACKGROUND_STORAGE,
-        CUSTOM_LIBRARY_STORAGE,
-        CUSTOM_BACKGROUND_STORAGE,
-        BACKGROUND_OPACITY_STORAGE,
-      ]
-      for (var i = 0; i < keys.length; i++) {
-        try {
-          var prev = snapshot[keys[i]]
-          if (prev === null || prev === undefined) window.localStorage.removeItem(keys[i])
-          else window.localStorage.setItem(keys[i], prev)
-        } catch (_error) {}
-      }
-    }
-
     function saveBackgroundState(id, custom, opacity, library) {
-      var snapshot = {}
-      var keys = [
-        BACKGROUND_STORAGE,
-        CUSTOM_LIBRARY_STORAGE,
-        CUSTOM_BACKGROUND_STORAGE,
-        BACKGROUND_OPACITY_STORAGE,
-      ]
-      try {
-        for (var i = 0; i < keys.length; i++) snapshot[keys[i]] = window.localStorage.getItem(keys[i])
-      } catch (_error) {
-        snapshot = {
-          [BACKGROUND_STORAGE]: storageGet(BACKGROUND_STORAGE),
-          [CUSTOM_LIBRARY_STORAGE]: storageGet(CUSTOM_LIBRARY_STORAGE),
-          [CUSTOM_BACKGROUND_STORAGE]: storageGet(CUSTOM_BACKGROUND_STORAGE),
-          [BACKGROUND_OPACITY_STORAGE]: storageGet(BACKGROUND_OPACITY_STORAGE),
-        }
-      }
-
       var nextLibrary = undefined
       if (library !== undefined) {
         try {
@@ -189,21 +155,14 @@
         if (!canPersistLibrary(library, null)) return false
       }
 
-      function write(key, value) {
-        if (value === null) window.localStorage.removeItem(key)
-        else window.localStorage.setItem(key, value)
-      }
-
-      try {
-        if (library !== undefined) write(CUSTOM_LIBRARY_STORAGE, nextLibrary)
-        write(BACKGROUND_STORAGE, id)
-        if (custom !== undefined) write(CUSTOM_BACKGROUND_STORAGE, custom)
-        write(BACKGROUND_OPACITY_STORAGE, String(opacity))
-        return true
-      } catch (_error) {
-        restoreStorageSnapshot(snapshot)
-        return false
-      }
+      // The working copy never rejects a write; over-budget states were
+      // rejected above, and a failed host PUT is reported by
+      // storagePersistFailed rather than rolling the copy back.
+      if (library !== undefined) storageSet(CUSTOM_LIBRARY_STORAGE, nextLibrary)
+      storageSet(BACKGROUND_STORAGE, id)
+      if (custom !== undefined) storageSet(CUSTOM_BACKGROUND_STORAGE, custom)
+      storageSet(BACKGROUND_OPACITY_STORAGE, String(opacity))
+      return true
     }
 
     function applyBoundAppearance(theme, background) {

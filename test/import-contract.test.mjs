@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import vm from 'node:vm'
-import { applyPlugin, createLiveReact, findBy, loadClient, mockTheme } from './helpers/client-runtime.mjs'
+import { applyPlugin, createFakeTimers, createLiveReact, findBy, flushMicrotasks, loadClient, mockTheme } from './helpers/client-runtime.mjs'
 
 const constants = await readFile(new URL('../src/client/constants.js', import.meta.url), 'utf8')
 const i18n = await readFile(new URL('../src/client/i18n.js', import.meta.url), 'utf8')
@@ -106,8 +106,10 @@ function mountSettingsRow(options = {}) {
     images.push(this)
     Object.defineProperty(this, 'src', { set() {} })
   }
-  const { plugin, context } = loadClient(live.React, options.storage || new Map(), {
+  const timers = options.timers || createFakeTimers()
+  const { plugin, context, fetchLog } = loadClient(live.React, options.storage || new Map(), {
     Image,
+    timers,
     URL: {
       createObjectURL() { return 'blob:settings' },
       revokeObjectURL(value) { revoked.push(value) },
@@ -145,6 +147,15 @@ function mountSettingsRow(options = {}) {
     bag() { return live.states[1] },
     input() { return findBy(live.tree, node => node?.props?.type === 'file') },
     storage: context.window.localStorage.values,
+    timers,
+    fetchLog,
+    /** The settings document of the most recent debounced host PUT. */
+    async hostDoc() {
+      timers.runAllTimeouts()
+      await flushMicrotasks()
+      const puts = fetchLog.filter(entry => entry.method === 'PUT')
+      return puts.length === 0 ? {} : JSON.parse(puts.at(-1).body)
+    },
   }
 }
 
@@ -213,7 +224,8 @@ test('two imports finishing in reverse order both persist', async () => {
   for (let i = 0; i < 8; i++) await new Promise(resolve => setImmediate(resolve))
   row.runIdle('shift')
   for (let i = 0; i < 8; i++) await new Promise(resolve => setImmediate(resolve))
-  const library = JSON.parse(row.storage.get('dsh-liquid-glass.background.customs') || '[]')
+  const doc = await row.hostDoc()
+  const library = JSON.parse(doc['dsh-liquid-glass.background.customs'] || '[]')
   assert.equal(library.length, 2)
 })
 

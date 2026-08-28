@@ -42,11 +42,25 @@ dsh plugin --profile web add github:xingyingyuzhui/dsh-liquid-glass
 
 旧的「壁纸模糊」存储键不再读取，也不会自动换成新的玻璃模糊。
 
+## 设置存储
+
+浏览器 localStorage 按 origin（协议+域名+端口）隔离，而 DSH Web 服务器每次启动监听一个新端口（`listen(port: 0)`），所以 localStorage 里的皮肤设置每次重启都会"丢失"（回到默认关闭）。
+
+自 0.13.0 起，设置的权威副本存在 host 侧的一个稳定路径：
+
+```
+$DSH_HOME/plugins/dsh-liquid-glass/settings.json    # 默认 ~/.dsh/plugins/...
+```
+
+- Client 启动时 `GET /dsh-liquid-glass/settings.json` 一次性载入内存工作副本，读保持同步；
+- 每次修改走 300ms 防抖后 `PUT` 全量回传，host 以 tmp+rename 原子落盘；
+- 首次升级时把当前 origin 的 localStorage 旧值一次性迁移上传（跨端口的旧数据无法迁移，需重设一次）。
+
 ## 工作原理
 
 | 面 | 文件 | 说明 |
 | --- | --- | --- |
-| Host | `host.js` | 托管冰原 / 深水 JPEG。哈希 URL 一年 `immutable`，legacy URL `no-cache`。 |
+| Host | `host.js` | 托管冰原 / 深水 JPEG（哈希 URL 一年 `immutable`，legacy URL `no-cache`）；`GET/PUT /dsh-liquid-glass/settings.json` 设置文档（`no-store`，原子落盘）。 |
 | Client | `client.js` | `__ModuleLoader__` bundle：设置行 + 壁纸层 + 玻璃岛 CSS。源码在 `src/client/`，`client.js` 由 `npm run build` 生成。 |
 
 CSS 只挂在 `body[data-dsh-liquid-glass]` 下。模糊只发生在各岛 `::before`，不糊壁纸、body 或官方滚动容器。
