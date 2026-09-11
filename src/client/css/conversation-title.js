@@ -37,6 +37,18 @@ body[data-dsh-liquid-glass] [data-slot='conversation.session.header'] > header::
   box-shadow: inset 0 1px 0 var(--lg-highlight), inset 0 0 0 1px var(--lg-border);
 }
 
+/* DSH's main.conversation shell no longer gives the title backdrop its old
+   compositor boundary. In Chromium, any backdrop-filter on this negative-z
+   pseudo then suppresses painting for the transcript and sticky composer.
+   Keep the translucent title plate, but skip backdrop compositing only on the
+   new shell. Older DSH builds retain the full refractive title material. */
+body[data-dsh-liquid-glass] [data-slot='main.conversation']
+  [data-slot='conversation.session.header'] > header::before {
+  background: var(--lg-pane-bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 body[data-dsh-liquid-glass] [data-slot='conversation.session.header'] > header > * {
   position: relative;
   z-index: 1;
