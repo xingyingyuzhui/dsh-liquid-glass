@@ -461,6 +461,13 @@ test('each glass island owns a local ::before material', () => {
   assert.doesNotMatch(clientSource, /\[data-variant='others'\]/)
 })
 
+test('new main.conversation shell disables the title backdrop compositor', () => {
+  const title = cssBlock("[data-slot='main.conversation'] [data-slot='conversation.session.header'] > header::before")
+  assert.match(title, /-webkit-backdrop-filter:\s*none/)
+  assert.match(title, /backdrop-filter:\s*none/)
+  assert.match(title, /background:\s*var\(--lg-pane-bg\)/)
+})
+
 test('install keeps official appearance and only washes the canvas for wallpaper', () => {
   const { context, plugin } = loadClient()
   const theme = mockTheme()
