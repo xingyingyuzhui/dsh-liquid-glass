@@ -24,7 +24,9 @@ export const CLIENT_LAYERS = [
   'css/settings.js',
   'css/a11y.js',
   'css.js',
-  'storage.js',
+  'luminance.js',      // 纯函数：亮度测量 + tone 推算（无副作用）
+  'storage.js',        // 本地读写 + 服务端 config 同步
+  'sync-queue.js',     // 写入队列 + revision 轮询（含 stop）
   'i18n.js',
   'wallpaper-state.js',
   'optics-sdf.js',

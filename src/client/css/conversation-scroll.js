@@ -28,23 +28,27 @@ body[data-dsh-liquid-glass] [data-slot='conversation.session'] > :first-child:no
    insets against the actual scrollport and sticky composer rectangles, so
    transcript pixels are genuinely clipped at both viewport edges instead of
    being covered by an opaque colour slab. Trajectory does not have this node. */
+/* 修复(20261022)：删除 [data-chat-flow] 上的动态 clip-path。
+ *
+ * 原实现给内容列加 clip-path: inset(--lg-chat-clip-top ...)，变量由 JS 按
+ * 「scrollRect.top - columnRect.top」逐帧写入。实测该差值滚动后可达 1.7 万 px
+ * （17820），而 inset() 是相对元素自身盒子裁剪，导致：
+ *   ① 内容被从顶部整片切掉 → 过程步骤/工具调用文字被挖空，完全不可见；
+ *   ② 每帧改写超大 clip-path → 整层重新栅格化，滚动明显卡顿（移动端尤甚）。
+ *
+ * 根本原因：这段裁剪是多余的。滚动容器 [data-conversation-scroll] 本身
+ * 就是 overflow:auto 的滚动所有者，滚出视口的内容浏览器天然不绘制；
+ * 容器自身的静态 clip-path(见上方规则) 已保证内容在玻璃岛圆角内被裁齐。
+ * 再对内容列叠一层动态裁剪，既是二次裁剪，坐标系也不对。
+ *
+ * 保留 padding-bottom 作为底部呼吸位。 */
 body[data-dsh-liquid-glass] [data-conversation-scroll] [data-chat-flow] {
   box-sizing: border-box;
   padding-bottom: 6px;
-  clip-path: inset(
-    var(--lg-chat-clip-top, 0px)
-    0
-    calc(var(--lg-chat-clip-bottom, 0px) + var(--lg-pane-gutter))
-    0
-  );
 }
 
-/* clip-path is a fixed containing block. Official tooltips sit next to the
-   anchor with position:fixed and no portal, so they vanish inside the clip.
-   Drop the clip only while a bubble is open in this flow. */
-body[data-dsh-liquid-glass] [data-conversation-scroll] [data-chat-flow]:has([role='tooltip']) {
-  clip-path: none;
-}
+/* 20261022：内容列已不再应用 clip-path，此处原本用于在 tooltip 打开时
+   释放裁剪的规则已无必要，保留说明以免后人误加回来。 */
 
 body[data-dsh-liquid-glass] [data-slot='conversation.session'] > :first-child:has([data-conversation-composer-overlay]) {
   padding: 12px 24px;

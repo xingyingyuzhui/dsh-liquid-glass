@@ -74,10 +74,32 @@
       return preset === undefined ? 'theme' : preset.tone
     }
 
+    /* 决定整体明暗。优先级：
+     *   ① 预设壁纸自带 tone（ice=light / deepwater=dark）—— 固定satisfying，不做亮度换算
+     *   ② 自定义壁纸按「实际显示效果」实时推算（方案 B，20261027）
+     *   ③ 都没有 → 跟随宿主主题
+     *
+     * ⭐ 为什么自定义图要实时算而不能预设：
+     *   最终视觉 = 图片亮度 × opacity + 底层亮度 × (1 - opacity)
+     *   opacity 是用户随时可调的滑块，所以同一个 tone 值在不同透明度下会错。
+     *   只存图片自身亮度（luminance，唯一稳定属性），每次渲染按当时 opacity 换算。
+     */
     function surfaceScheme(theme, background) {
-      var tone = backgroundTone(background.id)
-      if (tone === 'dark') return 'dark'
-      if (tone === 'light') return 'light'
+      var preset = BACKGROUNDS.find(function (item) { return item.id === background.id })
+      if (preset !== undefined && (preset.tone === 'dark' || preset.tone === 'light')) return preset.tone
+
+      // 自定义壁纸：用亮度 + 当前不透明度实时判定
+      if (typeof resolveTone === 'function') {
+        var lum = null
+        var hit = customFromLibrary(background.customs || [], background.id)
+        if (hit !== null && typeof hit.luminance === 'number') lum = hit.luminance
+        else if (typeof background.luminance === 'number') lum = background.luminance
+        if (lum !== null) {
+          var tone = resolveTone(lum, background.opacity)
+          if (tone !== null) return tone
+          // 落在临界区（两种底层假设结论不一致）→ 交给宿主主题，避免闪烁
+        }
+      }
       return activeScheme(theme)
     }
 
@@ -123,6 +145,8 @@
         custom: current !== null ? current.data : null,
         customs: library,
         opacity: readNumber(BACKGROUND_OPACITY_STORAGE, 0.35, 1, DEFAULT_WALLPAPER_OPACITY),
+        // 自定义图的亮度，供 surfaceScheme 按当前不透明度实时推明暗
+        luminance: (current !== null && typeof current.luminance === 'number') ? current.luminance : null,
       }
     }
 
@@ -189,9 +213,11 @@
         if (!canPersistLibrary(library, null)) return false
       }
 
+      /* 20261027：改用 storageSet —— 它会「写本地 + 上报服务端」。
+       * 原来直接调 window.localStorage.setItem，绕过了服务端上报，
+       * 导致壁纸透明度只改本地，而 storageGet 优先读服务端旧值 ⇒ 滑杆动了没反应。 */
       function write(key, value) {
-        if (value === null) window.localStorage.removeItem(key)
-        else window.localStorage.setItem(key, value)
+        storageSet(key, value)
       }
 
       try {

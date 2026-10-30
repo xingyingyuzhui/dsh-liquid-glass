@@ -128,6 +128,9 @@
               opacity: background.opacity,
             }
             var persisted = saveBackgroundState(next.id, next.custom, next.opacity, library)
+            // 20261027：导入成功后把新图上传服务端，供其他设备同步。
+            // 失败不影响本地使用（本地副本已生效），静默忽略。
+            if (typeof pushGalleryItems === 'function') pushGalleryItems([item])
             refresh({ background: next }, failStatus(persisted))
           })
           return importBag.chain

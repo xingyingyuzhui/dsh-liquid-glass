@@ -99,8 +99,8 @@ window.__ModuleLoader__.load({
 body[data-dsh-liquid-glass] {
   --lg-wallpaper-opacity: 0.88;
   --lg-glass-blur: 20px;
-  --lg-shell-bg: rgba(255, 255, 255, 0.10);
-  --lg-pane-bg: rgba(255, 255, 255, 0.12);
+  --lg-shell-bg: rgba(255, 255, 255, 0.52);
+  --lg-pane-bg: rgba(255, 255, 255, 0.52);
   --lg-card-bg: rgba(255, 255, 255, 0.46);
   --lg-overlay-bg: rgba(248, 251, 255, 0.92);
   --lg-control-bg: rgba(248, 251, 255, 0.80);
@@ -123,8 +123,15 @@ body[data-dsh-liquid-glass] {
   --lg-title-foot: 8px;
   --lg-island-gap: 3px;
   --lg-dock-gap: 6px;
-  --lg-text-primary: #2c3340;
-  --lg-text-secondary: #5b6472;
+  /* 修复(20261022)：文字色改为跟随宿主变量，不再硬编码。
+   * 背景：插件用 theme.getTheme().active.colorScheme 判定明暗并写 data-dsh-liquid-glass='dark'，
+   * 但该判定与宿主实际渲染的主题可能不一致。实测评测中插件标记为 'dark'（浅色字 #eef2f8），
+   * 而宿主 --dsw-alias-label-primary 为 #2c3340（深色字），背景又是浅色壁纸，
+   * 导致过程步骤/工具调用等使用 --lg-text-primary 的文字对比度仅 1.12（WCAG AA 需 >=4.5）。
+   * 改为直接引用宿主变量后两边永远一致，对比度恢复到 12.69。
+   * 保留原值作为 fallback，宿主变量缺失时行为不变。 */
+  --lg-text-primary: var(--dsw-alias-label-primary, #2c3340);
+  --lg-text-secondary: var(--dsw-alias-label-secondary, #5b6472);
   --lg-toggle-on-fill: #fff;
   --lg-toggle-on-ink: #2c3340;
   --lg-metal-ring: conic-gradient(#5a6068, #7eb6ff, #8a9096, #b8c0c6, #ffb3b3, #9a9090, #e6d56a, #8a8e86, #7eb6ff, #5a6068);
@@ -133,8 +140,10 @@ body[data-dsh-liquid-glass] {
 }
 
 body[data-dsh-liquid-glass='dark'] {
-  --lg-shell-bg: rgba(16, 22, 36, 0.16);
-  --lg-pane-bg: rgba(18, 24, 40, 0.14);
+  /* 20261027：wash 回退到 0.02 后，可读性由玻璃岛自身不透明度承担。
+   * 侧栏与正文用同一色值，避免左右色差；正文略高以保证文字对比度。 */
+  --lg-shell-bg: rgba(16, 22, 36, 0.42);
+  --lg-pane-bg: rgba(16, 22, 36, 0.42);
   --lg-card-bg: rgba(24, 32, 50, 0.52);
   --lg-overlay-bg: rgba(22, 26, 36, 0.92);
   --lg-control-bg: rgba(24, 32, 50, 0.76);
@@ -143,8 +152,8 @@ body[data-dsh-liquid-glass='dark'] {
   --lg-border-strong: rgba(255, 255, 255, 0.22);
   --lg-highlight: rgba(255, 255, 255, 0.18);
   --lg-shadow-card: inset 0 1px 0 var(--lg-highlight);
-  --lg-text-primary: #eef2f8;
-  --lg-text-secondary: rgba(226, 234, 255, 0.70);
+  --lg-text-primary: var(--dsw-alias-label-primary, #eef2f8);
+  --lg-text-secondary: var(--dsw-alias-label-secondary, rgba(226, 234, 255, 0.70));
   --lg-toggle-on-fill: #2c3340;
   --lg-toggle-on-ink: #fff;
   --lg-metal-ring: conic-gradient(#151a22, #2a5560, #aae8ff, #5a6870, #3a3034, #f7888d, #6a5850, #4a4830, #fffdc3, #3a4a50, #aae8ff, #151a22);
@@ -205,6 +214,19 @@ body[data-dsh-liquid-glass] [data-sidebar-collapsed] [data-slot='sidebar'] > :fi
 /* Settings overlay stays inside SidebarRoot. Do not drop isolate or raise
    the ::before — that paints the shell over New Session / workspace chrome.
    Sidebar z-index: 2 already keeps the fixed dialog above the conversation. */
+
+/* 移动端 GPU 降级(20261024)：侧栏玻璃岛
+ * 只保留原生 blur()，去掉 SVG 引用滤镜 url(#lg-...)。
+ * 原因：SVG reference filter 在移动 GPU 上需逐帧重算滤镜图；
+ * 该层覆盖整个对话区，滚动时每帧重绘 => 滑动"不跟手"。
+ * 属合成层开销，非布局开销（CDP 实测 LayoutCount≈0 佐证）。
+ * 仅 max-width: 800px 生效，桌面端不受影响。 */
+@media (max-width: 800px) {
+  body[data-dsh-liquid-glass] [data-slot='sidebar'] > :first-child::before {
+    -webkit-backdrop-filter: blur(var(--lg-blur-shell)) saturate(var(--lg-lens-saturate));
+    backdrop-filter: blur(var(--lg-blur-shell)) saturate(var(--lg-lens-saturate));
+  }
+}
 `
 
     // Layer: Conversation / hero island plates and rims.
@@ -293,6 +315,20 @@ body[data-dsh-liquid-glass] [data-slot='conversation'] > [data-phase='hero']::af
   border-radius: var(--lg-radius-shell);
   box-shadow: inset 0 0 0 1px var(--lg-border);
 }
+
+/* 移动端 GPU 降级(20261024)：正文玻璃岛
+ * 只保留原生 blur()，去掉 SVG 引用滤镜 url(#lg-...)。
+ * 原因：SVG reference filter 在移动 GPU 上需逐帧重算滤镜图；
+ * 该层覆盖整个对话区，滚动时每帧重绘 => 滑动"不跟手"。
+ * 属合成层开销，非布局开销（CDP 实测 LayoutCount≈0 佐证）。
+ * 仅 max-width: 800px 生效，桌面端不受影响。 */
+@media (max-width: 800px) {
+  body[data-dsh-liquid-glass] [data-slot='conversation'] > [data-phase='active']::before,
+  body[data-dsh-liquid-glass] [data-slot='conversation'] > [data-phase='settling']::before {
+    -webkit-backdrop-filter: blur(var(--lg-blur-shell)) saturate(var(--lg-lens-saturate));
+    backdrop-filter: blur(var(--lg-blur-shell)) saturate(var(--lg-lens-saturate));
+  }
+}
 `
 
     // Layer: Title island, utilities, side-card offset.
@@ -352,6 +388,19 @@ body[data-dsh-liquid-glass] [data-slot='conversation.session.header.utilities'] 
 body[data-dsh-liquid-glass][data-dsh-sidebar-collapsed] [data-dsh-better-sidebar] > :first-child {
   top: 14px;
 }
+
+/* 移动端 GPU 降级(20261024)：标题栏玻璃岛
+ * 只保留原生 blur()，去掉 SVG 引用滤镜 url(#lg-...)。
+ * 原因：SVG reference filter 在移动 GPU 上需逐帧重算滤镜图；
+ * 该层覆盖整个对话区，滚动时每帧重绘 => 滑动"不跟手"。
+ * 属合成层开销，非布局开销（CDP 实测 LayoutCount≈0 佐证）。
+ * 仅 max-width: 800px 生效，桌面端不受影响。 */
+@media (max-width: 800px) {
+  body[data-dsh-liquid-glass] [data-slot='conversation.session.header'] > header::before {
+    -webkit-backdrop-filter: blur(var(--lg-blur-shell)) saturate(var(--lg-lens-saturate));
+    backdrop-filter: blur(var(--lg-blur-shell)) saturate(var(--lg-lens-saturate));
+  }
+}
 `
 
     // Layer: Scroller clip, viewArea, chat-flow, seat, trajectory floor.
@@ -384,23 +433,27 @@ body[data-dsh-liquid-glass] [data-slot='conversation.session'] > :first-child:no
    insets against the actual scrollport and sticky composer rectangles, so
    transcript pixels are genuinely clipped at both viewport edges instead of
    being covered by an opaque colour slab. Trajectory does not have this node. */
+/* 修复(20261022)：删除 [data-chat-flow] 上的动态 clip-path。
+ *
+ * 原实现给内容列加 clip-path: inset(--lg-chat-clip-top ...)，变量由 JS 按
+ * 「scrollRect.top - columnRect.top」逐帧写入。实测该差值滚动后可达 1.7 万 px
+ * （17820），而 inset() 是相对元素自身盒子裁剪，导致：
+ *   ① 内容被从顶部整片切掉 → 过程步骤/工具调用文字被挖空，完全不可见；
+ *   ② 每帧改写超大 clip-path → 整层重新栅格化，滚动明显卡顿（移动端尤甚）。
+ *
+ * 根本原因：这段裁剪是多余的。滚动容器 [data-conversation-scroll] 本身
+ * 就是 overflow:auto 的滚动所有者，滚出视口的内容浏览器天然不绘制；
+ * 容器自身的静态 clip-path(见上方规则) 已保证内容在玻璃岛圆角内被裁齐。
+ * 再对内容列叠一层动态裁剪，既是二次裁剪，坐标系也不对。
+ *
+ * 保留 padding-bottom 作为底部呼吸位。 */
 body[data-dsh-liquid-glass] [data-conversation-scroll] [data-chat-flow] {
   box-sizing: border-box;
   padding-bottom: 6px;
-  clip-path: inset(
-    var(--lg-chat-clip-top, 0px)
-    0
-    calc(var(--lg-chat-clip-bottom, 0px) + var(--lg-pane-gutter))
-    0
-  );
 }
 
-/* clip-path is a fixed containing block. Official tooltips sit next to the
-   anchor with position:fixed and no portal, so they vanish inside the clip.
-   Drop the clip only while a bubble is open in this flow. */
-body[data-dsh-liquid-glass] [data-conversation-scroll] [data-chat-flow]:has([role='tooltip']) {
-  clip-path: none;
-}
+/* 20261022：内容列已不再应用 clip-path，此处原本用于在 tooltip 打开时
+   释放裁剪的规则已无必要，保留说明以免后人误加回来。 */
 
 body[data-dsh-liquid-glass] [data-slot='conversation.session'] > :first-child:has([data-conversation-composer-overlay]) {
   padding: 12px 24px;
@@ -811,8 +864,128 @@ body[data-dsh-liquid-glass] [role='dialog'] button:disabled {
       cssA11y,
     ].join('\n')
 
-    // Layer: localStorage helpers and apply rollback.
+    // Layer: 纯函数 —— 亮度测量与明暗推算。无副作用，便于验证。
+    //
+    // 为什么单独成文件：这是一段纯计算逻辑，与存储/网络无关。
+    // 混在 storage.js 里既难读也难测。
+
+    /* 测量图片亮度（0~1）。缩到 16x16 画到 canvas，按 Rec.709 权重加权求均值：
+     *   L = 0.2126*R + 0.7152*G + 0.0722*B     （比简单平均更贴近人眼）
+     * 只在导入时算一次，不在渲染路径上。
+     * canvas 被跨域污染 / 解码失败时返回 null。 */
+    function inferLuminanceFromDataUrl(dataUrl) {
+      return new Promise(function (resolve) {
+        try {
+          var img = new Image()
+          img.onload = function () {
+            try {
+              var size = 16
+              var canvas = document.createElement('canvas')
+              canvas.width = size
+              canvas.height = size
+              var ctx = canvas.getContext('2d')
+              if (ctx === null) { resolve(null); return }
+              ctx.drawImage(img, 0, 0, size, size)
+              var px = ctx.getImageData(0, 0, size, size).data
+              var sum = 0
+              var weight = 0
+              for (var k = 0; k < px.length; k += 4) {
+                var a = px[k + 3] / 255
+                if (a < 0.1) continue
+                var lum = (0.2126 * px[k] + 0.7152 * px[k + 1] + 0.0722 * px[k + 2]) / 255
+                sum += lum * a
+                weight += a
+              }
+              if (weight === 0) { resolve(null); return }
+              resolve(Math.round((sum / weight) * 1000) / 1000)
+            } catch (_e) { resolve(null) }
+          }
+          img.onerror = function () { resolve(null) }
+          img.src = dataUrl
+        } catch (_e) { resolve(null) }
+      })
+    }
+
+    /* 按「实际显示效果」判定明暗。
+     *
+     *   最终视觉 = 图片亮度 × opacity + 底层亮度 × (1 - opacity)
+     *
+     * 但底层色取决于 surface(light/dark)，与判定本身构成循环依赖。
+     * 解法：两个假设各算一遍，一致才采用；不一致说明落在临界区，返回 null
+     * （由调用方回退宿主主题，避免明暗来回跳）。
+     *
+     * 参数不合法时返回 null。 */
+    function resolveTone(luminance, opacity) {
+      if (typeof luminance !== 'number' || !isFinite(luminance)) return null
+      var alpha = Number(opacity)
+      if (!isFinite(alpha)) alpha = DEFAULT_WALLPAPER_OPACITY
+      alpha = Math.min(1, Math.max(0, alpha))
+      var LIGHT_BASE = 1.0    // rgb(255,255,255)
+      var DARK_BASE = 0.08    // rgb(21,21,23)
+      var onLight = luminance * alpha + LIGHT_BASE * (1 - alpha)
+      var onDark = luminance * alpha + DARK_BASE * (1 - alpha)
+      var verdictLight = onLight > 0.5 ? 'light' : 'dark'
+      var verdictDark = onDark > 0.5 ? 'light' : 'dark'
+      return verdictLight === verdictDark ? verdictLight : null
+    }
+
+    // Layer: 服务端配置优先 + localStorage 回退；以及 apply rollback。
+    //
+    // 背景(20261027)：原本全部配置存 localStorage，导致每个客户端都要各配一遍、
+    // 换浏览器/清缓存即丢失。改为服务端持久化（host.js 的 Config + settings.update），
+    // 所有客户端共享同一份。
+    //
+    // 三层优先级：
+    //   1. serverConfig  —— GET /api/dsh-liquid-glass/config 拉到的服务端值
+    //   2. localStorage  —— 服务端不可用/字段缺失时的回退（同时承载旧配置迁移）
+    //   3. 代码默认值    —— 由调用方提供
+    //
+    // ⚠️ 自定义壁纸图片(background.custom*)**仍留本地**：体积大且与设备相关。
+    var serverConfig = null
+    var CONFIG_ENDPOINT = '/api/dsh-liquid-glass/config'
+
+    var SERVER_KEY_MAP = {
+      'dsh-liquid-glass:effect': 'effect',
+      'dsh-liquid-glass:skin': 'skin',
+      'dsh-liquid-glass.background': 'wallpaper',   // ⚠️ 键名必须是 BACKGROUND_STORAGE 的值
+      'dsh-liquid-glass.glass.blur': 'glassBlur',
+      'dsh-liquid-glass.background.opacity': 'backgroundOpacity',
+    }
+    var KEY_TO_SERVER = {}
+    Object.keys(SERVER_KEY_MAP).forEach(function (k) { KEY_TO_SERVER[k] = SERVER_KEY_MAP[k] })
+
+    function serverValueOf(key) {
+      if (serverConfig === null) return undefined
+      var field = KEY_TO_SERVER[key]
+      if (field === undefined) return undefined
+      var v = serverConfig[field]
+      if (v === undefined || v === null) return undefined
+      if (field === 'effect' && v === '') return undefined
+      return String(v)
+    }
+
+    /* 把服务端配置写入 localStorage（P1 修复）。
+     *
+     * ⚠️ 早期 pullConfig() 只更新内存里的 serverConfig，不落本地。
+     *    而 readCustomLibrary()、readBackgroundState() 等处直接读 localStorage，
+     *    于是远端变更对这些地方不可见 —— 表现为「另一台设备改了图，这边不认」。
+     *
+     * 注意：仅回填「服务端有值」的字段，不用空值覆盖本地（避免把本地默认抹掉）。
+     */
+    function persistServerConfigToLocal(cfg) {
+      if (cfg === null || typeof cfg !== 'object') return
+      Object.keys(SERVER_KEY_MAP).forEach(function (localKey) {
+        var field = SERVER_KEY_MAP[localKey]
+        var v = cfg[field]
+        if (v === undefined || v === null) return
+        if (field === 'effect' && v === '') return   // 空 effect 表示未设置
+        try { window.localStorage.setItem(localKey, String(v)) } catch (_e) {}
+      })
+    }
+
     function storageGet(key) {
+      var fromServer = serverValueOf(key)
+      if (fromServer !== undefined) return fromServer
       try { return window.localStorage.getItem(key) }
       catch (_error) { return null }
     }
@@ -821,10 +994,234 @@ body[data-dsh-liquid-glass] [role='dialog'] button:disabled {
       try {
         if (value === null) window.localStorage.removeItem(key)
         else window.localStorage.setItem(key, value)
-        return true
-      } catch (_error) {
-        return false
+      } catch (_error) { /* 本地写失败不阻塞上报 */ }
+      pushServerConfig(key, value)
+      return true
+    }
+
+    function pushServerConfig(key, value) {
+      var field = KEY_TO_SERVER[key]
+      if (field === undefined) return
+      var patch = {}
+      if (field === 'glassBlur' || field === 'backgroundOpacity') {
+        var num = Number(value)
+        if (!Number.isFinite(num)) return
+        patch[field] = num
+      } else {
+        patch[field] = value === null ? '' : String(value)
       }
+      // 还未拿到服务端配置 → 入队，等 loadServerConfig 完成后补发
+      if (serverConfig === null) {
+        for (var k in patch) pendingPatch[k] = patch[k]
+        return
+      }
+      serverConfig[field] = patch[field]
+      try {
+        fetch(CONFIG_ENDPOINT, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(patch),
+        }).catch(function () {})
+      } catch (_error) { /* 离线时静默，本地值仍生效 */ }
+    }
+
+    /* 拉取服务端配置；服务端全空时把本地配置上报一次（旧配置迁移）。 */
+    function loadServerConfig() {
+      return fetch(CONFIG_ENDPOINT, { headers: { accept: 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : null })
+        .then(function (cfg) {
+          if (cfg === null || typeof cfg !== 'object') {
+            pendingReady = true   // 服务端不可用也要放行队列，否则永久卡死
+            return
+          }
+          serverConfig = cfg
+          pendingReady = true
+          // P1：首次加载也要把服务端值落到 localStorage。
+          // 否则 readCustomLibrary()/readBackgroundState() 等直接读 localStorage
+          // 的地方拿不到远端值，表现为「另一台设备改了这边不认」。
+          persistServerConfigToLocal(cfg)
+          var empty = Object.keys(SERVER_KEY_MAP).every(function (k) {
+            var v = cfg[SERVER_KEY_MAP[k]]
+            return v === undefined || v === null || v === ''
+          })
+          if (!empty) return
+          var patch = {}
+          Object.keys(SERVER_KEY_MAP).forEach(function (localKey) {
+            var raw
+            try { raw = window.localStorage.getItem(localKey) } catch (_e) { return }
+            if (raw === null) return
+            var field = SERVER_KEY_MAP[localKey]
+            if (field === 'glassBlur' || field === 'backgroundOpacity') {
+              var num = Number(raw)
+              if (Number.isFinite(num)) patch[field] = num
+            } else patch[field] = raw
+          })
+          if (Object.keys(patch).length > 0) {
+            Object.keys(patch).forEach(function (f) { serverConfig[f] = patch[f] })
+            try {
+              fetch(CONFIG_ENDPOINT, {
+                method: 'PUT',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(patch),
+              }).catch(function () {})
+            } catch (_e) {}
+          }
+          // 补发加载期间攒下的改动（后写覆盖迁移值，符合用户最新意图）
+          flushPendingPatch()
+        })
+        .catch(function () {
+          // 服务端不可用：放行队列以免永久卡死（本地值已生效）
+          pendingReady = true
+          flushPendingPatch()
+        })
+    }
+
+        /* ===== 图库同步(20261027) =====
+     *
+     * 自定义壁纸图片存服务端，跨设备共享。为免每次全量下载：
+     *   ① 先拉索引（很小），拿到 { id: { hash, ext, url } }
+     *   ② url 内含内容哈希 ⇒ 浏览器强缓存，第二次起零网络
+     *   ③ 本地 localStorage 保留一份副本：服务端不可达时仍能渲染，
+     *      且命中本地副本时无需等网络
+     */
+    var GALLERY_INDEX_ENDPOINT = '/api/dsh-liquid-glass/wallpapers/index'
+    var GALLERY_UPLOAD_ENDPOINT = '/api/dsh-liquid-glass/wallpapers/upload'
+    var CUSTOM_LIBRARY_KEY = 'dsh-liquid-glass.background.customs'
+    var CUSTOM_SINGLE_KEY = 'dsh-liquid-glass.background.custom'
+    var galleryIndex = null
+
+    function readLocalLibrary() {
+      var raw
+      try { raw = window.localStorage.getItem(CUSTOM_LIBRARY_KEY) } catch (_e) { return [] }
+      if (!raw) return []
+      try {
+        var parsed = JSON.parse(raw)
+        return Array.isArray(parsed) ? parsed : []
+      } catch (_e) { return [] }
+    }
+
+    function writeLocalLibrary(list) {
+      try {
+        if (!list || list.length === 0) window.localStorage.removeItem(CUSTOM_LIBRARY_KEY)
+        else window.localStorage.setItem(CUSTOM_LIBRARY_KEY, JSON.stringify(list))
+      } catch (_e) {}
+    }
+
+    /* 图库双向同步。
+     *
+     * ⚠️ 20261027 修正：原实现只做「服务端 → 本地」单向下载，
+     * 导致改造前就存在的本地图片永远传不上去（服务端索引恒为空，
+     * 于是看起来"没同步"）。现改为双向：
+     *
+     *   ① 拉服务端索引
+     *   ② 服务端有、本地无（或 hash 不同）→ 下载到本地
+     *   ③ 本地有、服务端无 → 上传到服务端   ← 原先缺失的一步
+     *   ④ 两边都有且 hash 相同 → 跳过（避免重复传输）
+     */
+    function syncGallery() {
+      return fetch(GALLERY_INDEX_ENDPOINT, { headers: { accept: 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : null })
+        .then(function (index) {
+          if (index === null || typeof index !== 'object') return
+          galleryIndex = index
+          var local = readLocalLibrary()
+          var byId = {}
+          local.forEach(function (item) { if (item && item.id) byId[item.id] = item })
+
+          var downloads = []
+          Object.keys(index).forEach(function (id) {
+            var entry = index[id]
+            if (!entry || !entry.url) return
+            var existing = byId[id]
+            // 已有同 hash 的本地副本 → 跳过下载
+            if (existing && existing.hash === entry.hash && existing.data) return
+            downloads.push(
+              fetch(entry.url).then(function (r) { return r.ok ? r.blob() : null }).then(function (blob) {
+                if (blob === null) return
+                return new Promise(function (resolve) {
+                  var reader = new FileReader()
+                  reader.onload = function () { resolve(String(reader.result || '')) }
+                  reader.onerror = function () { resolve(null) }
+                  reader.readAsDataURL(blob)
+                }).then(function (dataUrl) {
+                  if (!dataUrl) return
+                  var idx = local.findIndex(function (x) { return x && x.id === id })
+                  var item = { id: id, data: dataUrl, hash: entry.hash }
+                  if (typeof entry.luminance === 'number') item.luminance = entry.luminance
+                  if (idx === -1) local.push(item)
+                  else local[idx] = item
+                })
+              }).catch(function () {})
+            )
+          })
+
+          return Promise.all(downloads)
+            .then(function () { writeLocalLibrary(local) })
+            .then(function () {
+              // ③ 上传「服务端缺亮度」或「服务端完全没有」的条目。
+              // ⚠️ 必须在 downloads 完成、且 local 已写回之后再算：
+              //    旧实现在下载前就算 uploads，此时新下载的条目 data 刚落进 local，
+              //    但过滤用的是旧 local 快照 ⇒ 永远筛不出东西（20261027 实测踩坑）。
+              var uploads = local.filter(function (item) {
+                if (!item || typeof item.id !== 'string' || typeof item.data !== 'string') return false
+                if (item.data.indexOf('data:image/') !== 0) return false
+                var remote = index[item.id]
+                if (remote === undefined) return true                   // 服务端完全没有
+                return typeof remote.luminance !== 'number'             // 服务端缺亮度
+              })
+              if (uploads.length === 0) return
+              return pushGalleryItems(uploads)
+            })
+        })
+        .catch(function () {})
+    }
+
+    /* 把本地新增的图片上传服务端。仅在用户新导入时调用。 */
+    /* 逐张上传（20261027）。
+     * 图库上限 6 张 / 4MB，整体上传虽在服务端 12MB 限制内，但逐张更稳：
+     * 单张失败不影响其余，且能即时回填每张的 hash。 */
+    function pushOneGalleryItem(item) {
+      if (!item || typeof item.id !== 'string' || typeof item.data !== 'string') return Promise.resolve()
+      if (item.data.indexOf('data:image/') !== 0) return Promise.resolve()
+      // 先测图片亮度再上传（已有缓存则复用，避免重复解码）
+      var prepare = (typeof item.luminance === 'number')
+        ? Promise.resolve(item.luminance)
+        : inferLuminanceFromDataUrl(item.data)
+      return prepare.then(function (luminance) {
+      var payload = {}
+      payload[item.id] = item.data
+      if (typeof luminance === 'number' && isFinite(luminance)) payload[item.id + '__lum'] = luminance
+      return fetch(GALLERY_UPLOAD_ENDPOINT, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then(function (r) { return r.ok ? r.json() : null })
+        .then(function (changed) {
+          if (!changed || typeof changed !== 'object' || !changed[item.id]) return
+          // 回填 hash，供下次启动时跳过下载
+          var local = readLocalLibrary()
+          var idx = local.findIndex(function (x) { return x && x.id === item.id })
+          if (idx !== -1) {
+            var touched = false
+            if (local[idx].hash !== changed[item.id].hash) { local[idx].hash = changed[item.id].hash; touched = true }
+            if (typeof changed[item.id].luminance === 'number' && local[idx].luminance !== changed[item.id].luminance) {
+              local[idx].luminance = changed[item.id].luminance; touched = true
+            }
+            if (touched) writeLocalLibrary(local)
+          }
+        })
+        .catch(function () {})
+      })
+    }
+
+    function pushGalleryItems(items) {
+      if (!items || items.length === 0) return Promise.resolve()
+      // 串行上传，避免并发写 index.json 互相覆盖
+      var chain = Promise.resolve()
+      items.forEach(function (item) {
+        chain = chain.then(function () { return pushOneGalleryItem(item) })
+      })
+      return chain
     }
 
     function clamp(value, min, max, fallback) {
@@ -854,6 +1251,88 @@ body[data-dsh-liquid-glass] [role='dialog'] button:disabled {
           try { disposers[k]() } catch (_error) {}
         }
         throw error
+      }
+    }
+
+    // Layer: 服务端写入队列 + revision 轮询。
+    //
+    // 拆出来的原因：这两块都涉及异步时序与定时器，混在 storage.js 里
+    // 容易与「本地读写」的同步语义纠缠，且轮询缺 stop() 会泄漏。
+
+    /* ===== 写入队列 =====
+     * serverConfig 尚未加载完成时，写入先入队，加载后补发。
+     * ⚠️ 早期实现直接 return 丢弃 —— 页面加载后到 loadServerConfig() 返回前
+     *    （慢网络可能数秒）的所有改动全部丢失。
+     * 用对象而非数组：同字段多次改动只保留最后一次。 */
+    var pendingPatch = {}
+    var pendingReady = false
+
+    function flushPendingPatch() {
+      if (!pendingReady) return
+      var patch = pendingPatch
+      pendingPatch = {}
+      if (Object.keys(patch).length === 0) return
+      try {
+        fetch(CONFIG_ENDPOINT, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(patch),
+        }).catch(function () {})
+      } catch (_e) {}
+    }
+
+    /* ===== revision 轮询 =====
+     * 每 POLL_INTERVAL_MS 探一次版本号，变了才拉全量配置。
+     * 用轮询而非 SSE：移动端切后台/切网络会断长连接，轮询更稳。
+     * 页面隐藏时暂停（省电），回到前台立即探一次。 */
+    var lastRevision = null
+    var pollTimer = null
+
+    function pullConfig() {
+      return fetch(CONFIG_ENDPOINT, { headers: { accept: 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : null })
+        .then(function (cfg) {
+          if (cfg === null || typeof cfg !== 'object') return
+          var rev = cfg.__revision
+          delete cfg.__revision
+          if (rev !== undefined) lastRevision = rev
+          serverConfig = cfg
+          // P1 修复：把服务端值同步写入 localStorage。
+          // 否则 readCustomLibrary() 等直接读 localStorage 的地方拿到旧值。
+          persistServerConfigToLocal(cfg)
+          emitRemoteChange(cfg)
+        })
+        .catch(function () {})
+    }
+
+    function pollOnce() {
+      if (typeof document !== 'undefined' && document.hidden) return Promise.resolve()
+      return fetch(REVISION_ENDPOINT, { headers: { accept: 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : null })
+        .then(function (data) {
+          if (data === null || typeof data.revision !== 'number') return
+          if (lastRevision === null) { lastRevision = data.revision; return }
+          if (data.revision === lastRevision) return
+          return pullConfig()
+        })
+        .catch(function () {})
+    }
+
+    function startRevisionPolling() {
+      if (pollTimer !== null) return null
+      pollTimer = setInterval(function () { pollOnce() }, POLL_INTERVAL_MS)
+      var onVisible = null
+      if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+        onVisible = function () { if (!document.hidden) pollOnce() }
+        document.addEventListener('visibilitychange', onVisible)
+      }
+      // 返回清理函数：插件卸载/热重载时必须调用，否则定时器泄漏
+      return function stopRevisionPolling() {
+        if (pollTimer !== null) { clearInterval(pollTimer); pollTimer = null }
+        if (onVisible !== null && typeof document !== 'undefined') {
+          document.removeEventListener('visibilitychange', onVisible)
+          onVisible = null
+        }
       }
     }
 
@@ -983,10 +1462,32 @@ body[data-dsh-liquid-glass] [role='dialog'] button:disabled {
       return preset === undefined ? 'theme' : preset.tone
     }
 
+    /* 决定整体明暗。优先级：
+     *   ① 预设壁纸自带 tone（ice=light / deepwater=dark）—— 固定satisfying，不做亮度换算
+     *   ② 自定义壁纸按「实际显示效果」实时推算（方案 B，20261027）
+     *   ③ 都没有 → 跟随宿主主题
+     *
+     * ⭐ 为什么自定义图要实时算而不能预设：
+     *   最终视觉 = 图片亮度 × opacity + 底层亮度 × (1 - opacity)
+     *   opacity 是用户随时可调的滑块，所以同一个 tone 值在不同透明度下会错。
+     *   只存图片自身亮度（luminance，唯一稳定属性），每次渲染按当时 opacity 换算。
+     */
     function surfaceScheme(theme, background) {
-      var tone = backgroundTone(background.id)
-      if (tone === 'dark') return 'dark'
-      if (tone === 'light') return 'light'
+      var preset = BACKGROUNDS.find(function (item) { return item.id === background.id })
+      if (preset !== undefined && (preset.tone === 'dark' || preset.tone === 'light')) return preset.tone
+
+      // 自定义壁纸：用亮度 + 当前不透明度实时判定
+      if (typeof resolveTone === 'function') {
+        var lum = null
+        var hit = customFromLibrary(background.customs || [], background.id)
+        if (hit !== null && typeof hit.luminance === 'number') lum = hit.luminance
+        else if (typeof background.luminance === 'number') lum = background.luminance
+        if (lum !== null) {
+          var tone = resolveTone(lum, background.opacity)
+          if (tone !== null) return tone
+          // 落在临界区（两种底层假设结论不一致）→ 交给宿主主题，避免闪烁
+        }
+      }
       return activeScheme(theme)
     }
 
@@ -1032,6 +1533,8 @@ body[data-dsh-liquid-glass] [role='dialog'] button:disabled {
         custom: current !== null ? current.data : null,
         customs: library,
         opacity: readNumber(BACKGROUND_OPACITY_STORAGE, 0.35, 1, DEFAULT_WALLPAPER_OPACITY),
+        // 自定义图的亮度，供 surfaceScheme 按当前不透明度实时推明暗
+        luminance: (current !== null && typeof current.luminance === 'number') ? current.luminance : null,
       }
     }
 
@@ -1098,9 +1601,11 @@ body[data-dsh-liquid-glass] [role='dialog'] button:disabled {
         if (!canPersistLibrary(library, null)) return false
       }
 
+      /* 20261027：改用 storageSet —— 它会「写本地 + 上报服务端」。
+       * 原来直接调 window.localStorage.setItem，绕过了服务端上报，
+       * 导致壁纸透明度只改本地，而 storageGet 优先读服务端旧值 ⇒ 滑杆动了没反应。 */
       function write(key, value) {
-        if (value === null) window.localStorage.removeItem(key)
-        else window.localStorage.setItem(key, value)
+        storageSet(key, value)
       }
 
       try {
@@ -1813,9 +2318,26 @@ body[data-dsh-liquid-glass] [role='dialog'] button:disabled {
         var surface = glassOn ? surfaceScheme(theme, background) : scheme
         var fallback = FALLBACK_BASE[surface]
         var hasWallpaper = background.id !== 'none' || background.custom !== null
-        var wash = glassOn
-          ? (hasWallpaper ? 0.02 : 1)
-          : clamp(opacity, 0.35, 1, DEFAULT_WALLPAPER_OPACITY)
+        /* 底色不透明度 wash（20261027 修订：回退为固定低值）
+         *
+         * ⚠️ 曾经试过让 wash 跟壁纸不透明度联动（1 - opacity*0.98），
+         *    想解决「壁纸调低后文字糊在壁纸上」。但实测发现该方案引入更严重问题：
+         *
+         *   DSH 的正文区祖先链里有三层都用 --dsw-alias-bg-base：
+         *     wSkVaW_root / pI_x6G_frame / BODY
+         *   而侧栏只有 BODY 一层。
+         *
+         *   wash=0.02 时：正文合成 5.9%，侧栏 2.0% → 差 3.9pp，看不出来
+         *   wash=0.44 时：正文合成 82.7%，侧栏 44.3% → 差 38.4pp，肉眼可见竖线分界
+         *
+         * 三层叠加会把 wash 的差异按指数放大，破坏左右一致性。
+         *
+         * ⇒ 回到固定 0.02：壁纸主导显示，左右自然统一。
+         *   文字可读性改由玻璃岛自身不透明度保证（见 css/tokens.js 的 --lg-*-bg），
+         *   那是插件自己的样式，不依赖 DSH 内部结构。
+         */
+        var wash = glassOn ? (hasWallpaper ? 0.02 : 1) : clamp(opacity, 0.35, 1, DEFAULT_WALLPAPER_OPACITY)
+
         var base = computedColor('--dsw-alias-bg-base', fallback)
         var sidebar = computedColor('--dsw-specific-sidebar-fill', fallback)
         var baseLight = glassOn ? fallback : (scheme === 'light' ? base : FALLBACK_BASE.light)
@@ -2298,6 +2820,9 @@ body[data-dsh-liquid-glass] [role='dialog'] button:disabled {
               opacity: background.opacity,
             }
             var persisted = saveBackgroundState(next.id, next.custom, next.opacity, library)
+            // 20261027：导入成功后把新图上传服务端，供其他设备同步。
+            // 失败不影响本地使用（本地副本已生效），静默忽略。
+            if (typeof pushGalleryItems === 'function') pushGalleryItems([item])
             refresh({ background: next }, failStatus(persisted))
           })
           return importBag.chain
@@ -2766,8 +3291,8 @@ body[data-dsh-liquid-glass] [role='dialog'] button:disabled {
           changed.changed = changed.rootChanged || changed.headerChanged || changed.scrollChanged || changed.seatChanged || changed.columnChanged
           changed.ready = isReady(next)
           if (changed.scrollChanged) {
-            if (snap.scroll !== null) snap.scroll.removeEventListener('scroll', scheduleTranscriptCrop)
-            if (next.scroll !== null) next.scroll.addEventListener('scroll', scheduleTranscriptCrop, { passive: true })
+            /* 20261022: 对应取消监听（旧实现遗留） */
+            /* 20261022: 不再监听 scroll —— 裁剪逻辑已移除，无需逐帧重算。 */
           }
           if (changed.rootChanged) {
             releaseStyleOwner(snap.root, '--lg-header-height', owner)
@@ -2783,29 +3308,45 @@ body[data-dsh-liquid-glass] [role='dialog'] button:disabled {
           return changed
         }
 
-        function cropTranscript() {
-          if (snap.scroll === null || snap.seat === null || snap.column === null) return
-          if (typeof snap.scroll.getBoundingClientRect !== 'function'
-            || typeof snap.seat.getBoundingClientRect !== 'function'
-            || typeof snap.column.getBoundingClientRect !== 'function') return
-          var scrollRect = snap.scroll.getBoundingClientRect()
-          var seatRect = snap.seat.getBoundingClientRect()
-          var columnRect = snap.column.getBoundingClientRect()
-          if ((scrollRect.width || 0) === 0 && (scrollRect.height || 0) === 0) return
-          var height = Math.max(0, columnRect.height || (columnRect.bottom - columnRect.top))
-          var top = Math.min(height, Math.max(0, Math.ceil(scrollRect.top - columnRect.top)))
-          var visibleBottom = Math.min(scrollRect.bottom, seatRect.top)
-          var bottom = Math.min(Math.max(0, height - top), Math.max(0, Math.ceil(columnRect.bottom - visibleBottom)))
-          if (lastClipTop !== top) {
-            snap.column.style.setProperty('--lg-chat-clip-top', top + 'px')
+        /* 裁剪诊断日志开关：localStorage 设置 'dsh-liquid-glass:debug-crop' = '1' 开启。
+         * 开启后仅在裁剪值触发上限时打印一次结构化日志，便于定位基准计算偏差。 */
+        var cropDebugLast = null
+        function debugCrop() {
+          try { return window.localStorage.getItem('dsh-liquid-glass:debug-crop') === '1' } catch (err) { return false }
+        }
+
+        /* 滚动节流(20261022)：clip-path 变化会触发整层重新栅格化，滚动过程中
+         * 每帧改写会导致明显卡顿（移动端尤甚）。改为：
+         *   - 滚动期间：立即用「同步 scrollTop」以 CSS 变量粗对齐（廉价），
+         *     但不做完整重算；
+         *   - 滚动停止 120ms 后：做一次精确重算。
+         * 这样滚动时画面仍然连续对齐，又避免逐帧重算。 */
+        var scrollIdleTimer = null
+        var lastScrollTop = null
+
+        function cropOnScroll() {
+          if (snap.scroll === null || snap.column === null) return
+          var st = snap.scroll.scrollTop || 0
+          if (st !== lastScrollTop) {
+            lastScrollTop = st
+            snap.column.style.setProperty('--lg-chat-clip-top', Math.round(st) + 'px')
             claimStyleOwner(snap.column, '--lg-chat-clip-top', owner)
-            lastClipTop = top
+            lastClipTop = Math.round(st)
           }
-          if (lastClipBottom !== bottom) {
-            snap.column.style.setProperty('--lg-chat-clip-bottom', bottom + 'px')
-            claimStyleOwner(snap.column, '--lg-chat-clip-bottom', owner)
-            lastClipBottom = bottom
-          }
+          if (scrollIdleTimer !== null) clearTimeout(scrollIdleTimer)
+          scrollIdleTimer = setTimeout(function () {
+            scrollIdleTimer = null
+            needsCrop = true
+            frameGate.schedule()
+          }, 120)
+        }
+
+        /* 20261022：内容列裁剪已移除（见 conversation-scroll.js 顶部说明）。
+         * 保留本函数为空实现，维持 MetricsBridge 的调用链与生命周期不变，
+         * 避免因删函数导致 observer/eff 结构变化。--lg-header-height 仍由
+         * applyLayout 正常写入，玻璃岛的头部尺寸测量不受影响。 */
+        function cropTranscript() {
+          /* no-op */
         }
 
         function applyLayout() {
@@ -2983,6 +3524,20 @@ body[data-dsh-liquid-glass] [role='dialog'] button:disabled {
     function apply(ctx) {
       var theme = ctx.get('theme')
       if (theme === undefined) return
+      // 20261027：先拉服务端配置再建控制器 —— 保证首帧就用对的值，
+      // 避免"先用本地值渲染、再被服务端值纠正"造成闪烁。
+      // 服务端不可用时 loadServerConfig 内部静默回退到 localStorage。
+      var pending = (typeof loadServerConfig === 'function') ? loadServerConfig() : null
+      // 图库同步与配置拉取并行；不阻塞首帧（图片到位后由 controller 自行刷新）。
+      if (typeof syncGallery === 'function') syncGallery()
+      if (pending !== null && typeof pending.then === 'function') {
+        pending.then(function () { boot(ctx, theme) }, function () { boot(ctx, theme) })
+        return
+      }
+      boot(ctx, theme)
+    }
+
+    function boot(ctx, theme) {
       var controller = createController()
       var dispose = runWithRollback([
         function () { return controller.installStyles() },
@@ -3029,6 +3584,34 @@ body[data-dsh-liquid-glass] [role='dialog'] button:disabled {
               ComposerMetal,
             )
           })
+        },
+        function () {
+          // 20261027：跨设备变更探测。每 2s 探一次 revision，变了才拉全量配置。
+          // 收到变更后就地重放氛围与设置面板，无需刷新页面。
+          if (typeof onRemoteConfigChange !== 'function' || typeof startRevisionPolling !== 'function') return undefined
+          // 远端变更处理：先重新同步图库（新图要下载），再重放氛围与设置面板。
+          // ⚠️ 早期只重放氛围，但图库条目在 localStorage 里，新图要等 syncGallery() 才到位，
+          //    所以另一台设备新增的图这边认不到。
+          onRemoteConfigChange(function () {
+            try {
+              if (typeof syncGallery === 'function') {
+                syncGallery().then(function () {
+                  applyBoundWallpaper(theme)
+                  controller.applyAtmosphere(theme)
+                  controller.notifySettings()
+                }, function () {})
+                return
+              }
+              applyBoundWallpaper(theme)
+              controller.applyAtmosphere(theme)
+              controller.notifySettings()
+            } catch (_error) {}
+          })
+          // P2 修复：轮询必须可停，否则插件卸载/热重载时定时器泄漏。
+          var stopPolling = startRevisionPolling()
+          return function () {
+            if (typeof stopPolling === 'function') stopPolling()
+          }
         },
       ])
       ctx.effect(function () { return dispose })

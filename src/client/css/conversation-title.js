@@ -55,4 +55,17 @@ body[data-dsh-liquid-glass] [data-slot='conversation.session.header.utilities'] 
 body[data-dsh-liquid-glass][data-dsh-sidebar-collapsed] [data-dsh-better-sidebar] > :first-child {
   top: 14px;
 }
+
+/* 移动端 GPU 降级(20261024)：标题栏玻璃岛
+ * 只保留原生 blur()，去掉 SVG 引用滤镜 url(#lg-...)。
+ * 原因：SVG reference filter 在移动 GPU 上需逐帧重算滤镜图；
+ * 该层覆盖整个对话区，滚动时每帧重绘 => 滑动"不跟手"。
+ * 属合成层开销，非布局开销（CDP 实测 LayoutCount≈0 佐证）。
+ * 仅 max-width: 800px 生效，桌面端不受影响。 */
+@media (max-width: 800px) {
+  body[data-dsh-liquid-glass] [data-slot='conversation.session.header'] > header::before {
+    -webkit-backdrop-filter: blur(var(--lg-blur-shell)) saturate(var(--lg-lens-saturate));
+    backdrop-filter: blur(var(--lg-blur-shell)) saturate(var(--lg-lens-saturate));
+  }
+}
 `

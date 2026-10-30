@@ -105,8 +105,8 @@
           changed.changed = changed.rootChanged || changed.headerChanged || changed.scrollChanged || changed.seatChanged || changed.columnChanged
           changed.ready = isReady(next)
           if (changed.scrollChanged) {
-            if (snap.scroll !== null) snap.scroll.removeEventListener('scroll', scheduleTranscriptCrop)
-            if (next.scroll !== null) next.scroll.addEventListener('scroll', scheduleTranscriptCrop, { passive: true })
+            /* 20261022: 对应取消监听（旧实现遗留） */
+            /* 20261022: 不再监听 scroll —— 裁剪逻辑已移除，无需逐帧重算。 */
           }
           if (changed.rootChanged) {
             releaseStyleOwner(snap.root, '--lg-header-height', owner)
@@ -122,29 +122,45 @@
           return changed
         }
 
-        function cropTranscript() {
-          if (snap.scroll === null || snap.seat === null || snap.column === null) return
-          if (typeof snap.scroll.getBoundingClientRect !== 'function'
-            || typeof snap.seat.getBoundingClientRect !== 'function'
-            || typeof snap.column.getBoundingClientRect !== 'function') return
-          var scrollRect = snap.scroll.getBoundingClientRect()
-          var seatRect = snap.seat.getBoundingClientRect()
-          var columnRect = snap.column.getBoundingClientRect()
-          if ((scrollRect.width || 0) === 0 && (scrollRect.height || 0) === 0) return
-          var height = Math.max(0, columnRect.height || (columnRect.bottom - columnRect.top))
-          var top = Math.min(height, Math.max(0, Math.ceil(scrollRect.top - columnRect.top)))
-          var visibleBottom = Math.min(scrollRect.bottom, seatRect.top)
-          var bottom = Math.min(Math.max(0, height - top), Math.max(0, Math.ceil(columnRect.bottom - visibleBottom)))
-          if (lastClipTop !== top) {
-            snap.column.style.setProperty('--lg-chat-clip-top', top + 'px')
+        /* 裁剪诊断日志开关：localStorage 设置 'dsh-liquid-glass:debug-crop' = '1' 开启。
+         * 开启后仅在裁剪值触发上限时打印一次结构化日志，便于定位基准计算偏差。 */
+        var cropDebugLast = null
+        function debugCrop() {
+          try { return window.localStorage.getItem('dsh-liquid-glass:debug-crop') === '1' } catch (err) { return false }
+        }
+
+        /* 滚动节流(20261022)：clip-path 变化会触发整层重新栅格化，滚动过程中
+         * 每帧改写会导致明显卡顿（移动端尤甚）。改为：
+         *   - 滚动期间：立即用「同步 scrollTop」以 CSS 变量粗对齐（廉价），
+         *     但不做完整重算；
+         *   - 滚动停止 120ms 后：做一次精确重算。
+         * 这样滚动时画面仍然连续对齐，又避免逐帧重算。 */
+        var scrollIdleTimer = null
+        var lastScrollTop = null
+
+        function cropOnScroll() {
+          if (snap.scroll === null || snap.column === null) return
+          var st = snap.scroll.scrollTop || 0
+          if (st !== lastScrollTop) {
+            lastScrollTop = st
+            snap.column.style.setProperty('--lg-chat-clip-top', Math.round(st) + 'px')
             claimStyleOwner(snap.column, '--lg-chat-clip-top', owner)
-            lastClipTop = top
+            lastClipTop = Math.round(st)
           }
-          if (lastClipBottom !== bottom) {
-            snap.column.style.setProperty('--lg-chat-clip-bottom', bottom + 'px')
-            claimStyleOwner(snap.column, '--lg-chat-clip-bottom', owner)
-            lastClipBottom = bottom
-          }
+          if (scrollIdleTimer !== null) clearTimeout(scrollIdleTimer)
+          scrollIdleTimer = setTimeout(function () {
+            scrollIdleTimer = null
+            needsCrop = true
+            frameGate.schedule()
+          }, 120)
+        }
+
+        /* 20261022：内容列裁剪已移除（见 conversation-scroll.js 顶部说明）。
+         * 保留本函数为空实现，维持 MetricsBridge 的调用链与生命周期不变，
+         * 避免因删函数导致 observer/eff 结构变化。--lg-header-height 仍由
+         * applyLayout 正常写入，玻璃岛的头部尺寸测量不受影响。 */
+        function cropTranscript() {
+          /* no-op */
         }
 
         function applyLayout() {
